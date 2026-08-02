@@ -1,0 +1,142 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function roleValide(role) {
+      return role in ['Propriétaire', 'Gérant', 'Vendeur'];
+    }
+
+    // Compte de la plateforme (toi) : gère le plan/abonnement de toutes les boutiques.
+    function isSuperAdmin() {
+      return request.auth != null && request.auth.token.email == 'mahdiou.diallo@gmail.com';
+    }
+
+    // Configuration publique de la plateforme (tarifs affichés sur la page d'accueil) : lisible par
+    // tout le monde, y compris les visiteurs non connectés, modifiable uniquement par le super-admin.
+    match /config/{docId} {
+      allow read: if true;
+      allow write: if isSuperAdmin();
+    }
+
+    // Journal des connexions, toutes boutiques confondues : chaque compte peut créer sa propre
+    // entrée à la connexion et la mettre à jour (ping périodique, puis date/durée à la déconnexion,
+    // voir demarrerJournalConnexion()/deconnecter() dans auth.js) mais ne peut pas modifier les champs
+    // d'identité de sa propre entrée ni lire/modifier les entrées des autres. Lecture réservée au
+    // super-admin (voir view-connexions.js).
+    match /connexions/{docId} {
+      allow read: if isSuperAdmin();
+      allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
+      allow update: if request.auth != null && resource.data.uid == request.auth.uid &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['uid', 'email', 'boutiqueId', 'role', 'dateConnexion']);
+      allow delete: if isSuperAdmin();
+    }
+
+    // Journal des actions du super-admin (création de boutique, changement de plan/abonnement,
+    // tarifs modifiés...), toutes boutiques confondues. Append-only comme journalAudit — aucune
+    // modification ni suppression, même par le super-admin, pour que le journal reste fiable.
+    // Écrit et lu uniquement par le super-admin (voir enregistrerJournalAdmin() dans app-shell.js
+    // et view-journal-admin.js).
+    match /journalAdmin/{docId} {
+      allow read, create: if isSuperAdmin();
+      allow update, delete: if false;
+    }
+
+    // Pointeur perso : chaque compte utilisateur sait à quelle boutique il appartient et avec quel rôle.
+    match /membres/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+
+      // On peut créer son propre pointeur (inscription en tant que Propriétaire d'une nouvelle boutique),
+      // ou un Propriétaire peut créer le pointeur d'un utilisateur qu'il ajoute à SA boutique.
+      allow create: if isSuperAdmin() || (request.auth != null && (
+        request.auth.uid == uid ||
+        ( request.resource.data.boutiqueId is string &&
+          get(/databases/$(database)/documents/boutiques/$(request.resource.data.boutiqueId)/utilisateurs/$(request.auth.uid)).data.role == 'Propriétaire'
+        )
+      ));
+      allow update, delete: if isSuperAdmin() || (request.auth != null &&
+        get(/databases/$(database)/documents/boutiques/$(resource.data.boutiqueId)/utilisateurs/$(request.auth.uid)).data.role == 'Propriétaire');
+    }
+
+    match /boutiques/{boutiqueId} {
+      function estMembre() {
+        return request.auth != null && exists(/databases/$(database)/documents/boutiques/$(boutiqueId)/utilisateurs/$(request.auth.uid));
+      }
+      function monRole() {
+        return get(/databases/$(database)/documents/boutiques/$(boutiqueId)/utilisateurs/$(request.auth.uid)).data.role;
+      }
+
+      // Le document racine de la boutique (paramètres + abonnement) : lisible par tout membre et par le
+      // super-admin ; modifiable par le Propriétaire, SAUF les champs d'abonnement (plan, dateExpirationAbonnement,
+      // historiquePaiements) qui ne sont modifiables que par le super-admin, pour empêcher un Propriétaire de
+      // s'auto-accorder un abonnement payant sans payer.
+      function champsAbonnement() {
+        return ['plan', 'dateExpirationAbonnement', 'historiquePaiements', 'dateCreation'];
+      }
+      allow read: if estMembre() || isSuperAdmin();
+      allow create: if isSuperAdmin() || (
+        request.auth != null && request.auth.uid == boutiqueId &&
+        (!('plan' in request.resource.data) || request.resource.data.plan == 'gratuit') &&
+        !('dateExpirationAbonnement' in request.resource.data) &&
+        !('historiquePaiements' in request.resource.data)
+      );
+      allow update: if isSuperAdmin() || (
+        estMembre() && monRole() == 'Propriétaire' &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(champsAbonnement())
+      );
+      allow delete: if isSuperAdmin();
+
+      // Seul un Propriétaire peut gérer la liste des utilisateurs de la boutique.
+      // Exception de migration : un compte peut s'auto-déclarer Propriétaire de SA PROPRE boutique
+      // historique (uid de connexion == identifiant de la boutique == identifiant de la fiche), une seule fois.
+      match /utilisateurs/{membreUid} {
+        allow read: if estMembre() || isSuperAdmin();
+        allow create: if isSuperAdmin() && roleValide(request.resource.data.role);
+        allow create: if estMembre() && monRole() == 'Propriétaire' && roleValide(request.resource.data.role);
+        allow create: if request.auth != null && request.auth.uid == boutiqueId && request.auth.uid == membreUid
+          && request.resource.data.role == 'Propriétaire';
+        allow update: if isSuperAdmin() && roleValide(request.resource.data.role);
+        allow update: if estMembre() && monRole() == 'Propriétaire' && roleValide(request.resource.data.role);
+        allow delete: if isSuperAdmin() || (estMembre() && monRole() == 'Propriétaire');
+      }
+
+      // Les Vendeurs n'ont pas accès aux données financières.
+      match /depenses/{docId} {
+        allow read, write: if estMembre() && monRole() != 'Vendeur';
+      }
+
+      // Tout membre peut créer/lire/modifier des clients, mais seul le Propriétaire peut en
+      // supprimer un (l'historique de ventes lié à un client ne doit pas pouvoir être effacé par
+      // un Gérant ou un Vendeur) — confirmation par mot de passe côté client, voir
+      // confirmation-securisee.js.
+      match /clients/{docId} {
+        allow read, create, update: if estMembre();
+        allow delete: if estMembre() && monRole() == 'Propriétaire';
+      }
+
+      // Tout membre peut créer/lire/modifier un fournisseur, mais seul le Propriétaire peut en
+      // supprimer un (même logique que pour les clients).
+      match /fournisseurs/{docId} {
+        allow read, create, update: if estMembre();
+        allow delete: if estMembre() && monRole() == 'Propriétaire';
+      }
+
+      // Journal d'audit : toute action sensible (suppression, changement de rôle) y est enregistrée.
+      // Append-only — aucune modification ni suppression n'est permise, même par le Propriétaire,
+      // pour que le journal reste une trace fiable. Masqué aux Vendeurs en lecture.
+      match /journalAudit/{docId} {
+        allow read: if estMembre() && monRole() == 'Propriétaire';
+        allow create: if estMembre();
+        allow update, delete: if false;
+      }
+
+      // Toutes les autres sous-collections (produits, ventes, achats...) : accessibles à tout membre.
+      // Exclut les collections ayant déjà une règle dédiée ci-dessus : sans ce garde-fou, Firestore
+      // évalue TOUTES les règles qui matchent un chemin et autorise l'accès si UNE SEULE le permet,
+      // ce qui annulerait silencieusement les restrictions dédiées à clients/fournisseurs/depenses/utilisateurs/journalAudit.
+      match /{collectionPath}/{docId} {
+        allow read, write: if estMembre() && !(collectionPath in ['clients', 'fournisseurs', 'depenses', 'utilisateurs', 'journalAudit']);
+      }
+    }
+  }
+}
