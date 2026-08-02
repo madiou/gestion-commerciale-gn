@@ -5,11 +5,14 @@
   "scripts": {
     "test": "node --test tests/business-logic.test.js tests/i18n.test.js tests/helpers.test.js",
     "test:rules": "firebase emulators:exec --only firestore \"node --test tests/firestore-rules.test.js\"",
-    "test:all": "npm test && npm run test:rules",
+    "emulators:e2e": "firebase emulators:start --only hosting,firestore,auth",
+    "test:e2e": "playwright test",
+    "test:all": "npm test && npm run test:rules && npm run test:e2e",
     "reset-demo": "node scripts/reset-demo.cjs"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.1",
+    "@playwright/test": "^1.62.1",
     "firebase": "^12.17.0",
     "firebase-tools": "^15.25.1"
   }

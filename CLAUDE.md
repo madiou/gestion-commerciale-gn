@@ -26,7 +26,14 @@ pour la suite de tests et les scripts d'administration.
   `champsAbonnement`, `utilisateurs`, `depenses`, `clients`, `fournisseurs`, `journalAudit`) et,
   surtout, la règle générique catch-all et sa liste d'exclusion — voir le piège documenté plus bas.
   À relancer systématiquement après toute modification de `firestore.rules`, avant de déployer.
-- Lancer tout (unitaires + règles) : `npm run test:all`
+- Lancer les tests end-to-end (Playwright) : `npm run test:e2e` — démarre automatiquement les
+  émulateurs Hosting + Firestore + Auth (`npm run emulators:e2e`, voir `playwright.config.js`),
+  prépare un compte Propriétaire de démo + une boutique + un produit (`tests/e2e/global-setup.js`),
+  puis pilote un vrai navigateur Chromium contre `http://127.0.0.1:5000/?e2e=1`. Ce paramètre
+  `?e2e=1` est ce qui bascule `public/js/firebase-config.js` vers les émulateurs au lieu du projet
+  Firebase de production — sans lui, l'app pointerait vers les vraies données. Nécessite Java
+  (comme `test:rules`) et les navigateurs Playwright (`npx playwright install chromium`).
+- Lancer tout (unitaires + règles + e2e) : `npm run test:all`
 - Prévisualisation locale : `firebase emulators:start --only hosting` (sert `public/` sur
   `localhost:5000` ; config aussi dans `.claude/launch.json` pour l'outil de serveur de dev)
 - Déployer uniquement l'hébergement : `firebase deploy --only hosting`
@@ -154,3 +161,16 @@ piège du catch-all (voir Modèle de données Firestore ci-dessus) ou contre l'o
 d'un accès qui ne devrait pas exister (ex. le super-admin n'a délibérément accès à aucune
 sous-collection métier d'une boutique, seulement au document racine et à `utilisateurs/` — un test
 le vérifie explicitement).
+
+`tests/e2e/` contient les tests Playwright, qui pilotent un vrai navigateur contre l'app réelle
+(HTML/CSS/JS servis tels quels, comme en prod) plutôt que d'appeler des fonctions isolément — c'est
+la seule couche de test qui vérifie qu'un parcours complet fonctionne de bout en bout (clic par
+clic) dans le DOM effectivement rendu. `tests/e2e/global-setup.js` crée le compte de démo via
+l'API REST de l'émulateur Auth (`identitytoolkit.googleapis.com`, pas `.google.com` — les deux
+existent mais seule la première est le bon chemin de l'émulateur) et seed Firestore via
+`@firebase/rules-unit-testing`. En écrivant un nouveau test e2e, se rappeler que
+`renderContent()`/`render()` remplacent tout le HTML d'une zone à chaque changement d'état
+(dont chaque `onSnapshot` Firestore) — un `flash()` de confirmation posé juste avant un
+`renderContent()` synchrone est donc écrasé avant d'être visible (bug connu sur
+`view-vente.js`, `#msg-vente`) ; préférer vérifier l'état final (ex. la ligne apparaît dans un
+tableau) plutôt qu'un message transitoire.

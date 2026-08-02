@@ -36,6 +36,8 @@ Déployée sur `esig-gn.com` / `gestion-commerciale-gn.web.app`.
 - **`node --test`** — testeur intégré à Node.js pour les tests unitaires (`npm test`)
 - **`@firebase/rules-unit-testing`** + **émulateur Firestore** — tests des règles de sécurité
   (`npm run test:rules`), nécessite Java (JRE) installé
+- **Playwright** + **émulateurs Hosting/Firestore/Auth** — tests end-to-end dans un vrai navigateur
+  (`npm run test:e2e`)
 - **Firebase CLI** (`firebase deploy`, `firebase emulators:start`) — déploiement et prévisualisation locale
 - Script Node (`reset-demo.cjs`) utilisant l'API REST Firestore directement
 - **Python + reportlab** — génération des flyers marketing PDF (dossier `marketing/`)

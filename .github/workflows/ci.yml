@@ -27,3 +27,16 @@ jobs:
       - run: npm test
 
       - run: npm run test:rules
+
+      # Les tests e2e (npm run test:e2e) démarrent eux-mêmes les émulateurs Hosting/Firestore/Auth
+      # (voir playwright.config.js) — il ne faut qu'installer le navigateur au préalable.
+      - run: npx playwright install --with-deps chromium
+
+      - run: npm run test:e2e
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-traces
+          path: test-results/
+          retention-days: 7
