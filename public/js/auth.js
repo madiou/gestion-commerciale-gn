@@ -125,10 +125,17 @@ onAuthStateChanged(auth, async (user)=>{
       }
       if(!membreSnap.exists()){
         // Compte créé avant le système de rôles : on le reconnaît comme Propriétaire de sa propre boutique.
+        // Ce chemin peut aussi s'exécuter en course avec l'inscription elle-même (view-login.js écrit les
+        // mêmes documents juste après createUserWithEmailAndPassword, et onAuthStateChanged peut se
+        // déclencher avant que ces écritures n'arrivent) — donc ne jamais toucher ici aux champs
+        // d'abonnement (plan/dateCreation) : si le document boutiques/{uid} existe déjà (créé entre-temps
+        // par l'inscription, ou boutique payante historique), les règles Firestore interdisent à un
+        // Propriétaire de les modifier via une mise à jour, ce qui ferait échouer tout le bloc et
+        // afficherait "Aucun accès" à un client qui vient pourtant de créer son compte avec succès.
         try{
           await setDoc(doc(db,'boutiques',user.uid,'utilisateurs',user.uid), { nom:'Propriétaire', email:user.email, role:'Propriétaire', dateAjout:nowISO() }, { merge:true });
           await setDoc(doc(db,'membres',user.uid), { boutiqueId:user.uid, role:'Propriétaire', email:user.email });
-          await setDoc(doc(db,'boutiques',user.uid), { existe:true, plan:'gratuit', emailProprietaire:user.email, dateCreation:nowISO() }, { merge:true });
+          await setDoc(doc(db,'boutiques',user.uid), { existe:true, emailProprietaire:user.email }, { merge:true });
         }catch(e){
           renderSansBoutique();
           return;

@@ -56,6 +56,7 @@ export function renderLogin(modeDepart){
       <h2>${t('login_titre')}</h2>
       <p>${loginMode==='connexion' ? t('login_connexion') : t('login_inscription')}</p>
       <div class="msg err" id="login-msg"></div>
+      ${loginMode==='inscription' ? `<div class="champ"><label>${t('nom_boutique')}</label><input type="text" id="login-nom-boutique" placeholder="Ex : Boutique Diallo & Fils"></div>` : ''}
       <div class="champ"><label>${t('email')}</label><input type="email" id="login-email" placeholder="vous@exemple.com"></div>
       <div class="champ"><label>${t('mot_de_passe')}</label><input type="password" id="login-pass" placeholder="6 caractères minimum"></div>
       <button class="btn btn-primaire" id="login-submit" style="width:100%;">${loginMode==='connexion'?t('se_connecter'):t('creer_compte')}</button>
@@ -70,18 +71,25 @@ export function renderLogin(modeDepart){
   document.getElementById('login-switch').addEventListener('click', ()=>{ loginMode = loginMode==='connexion'?'inscription':'connexion'; renderLogin(); });
   const btnOublie = document.getElementById('login-mdp-oublie');
   if(btnOublie) btnOublie.addEventListener('click', ()=>{ loginMode='reset'; renderLogin(); });
-  document.getElementById('login-submit').addEventListener('click', async ()=>{
+  document.getElementById('login-submit').addEventListener('click', async (ev)=>{
+    if(ev.target.disabled) return;
     const email = document.getElementById('login-email').value.trim();
     const pass = document.getElementById('login-pass').value;
     const msg = document.getElementById('login-msg');
     msg.style.display='none';
+    let nomBoutique = '';
+    if(loginMode==='inscription'){
+      nomBoutique = document.getElementById('login-nom-boutique').value.trim();
+      if(!nomBoutique){ msg.textContent = t('nom_boutique_requis'); msg.style.display='block'; return; }
+    }
+    ev.target.disabled = true;
     try{
       if(loginMode==='connexion'){
         await signInWithEmailAndPassword(auth, email, pass);
       } else {
         const cred = await createUserWithEmailAndPassword(auth, email, pass);
         const uid = cred.user.uid;
-        await setDoc(doc(db,'boutiques',uid), { existe:true, plan:'gratuit', emailProprietaire:email, dateCreation:nowISO() }, { merge:true });
+        await setDoc(doc(db,'boutiques',uid), { existe:true, plan:'gratuit', nomBoutique, emailProprietaire:email, dateCreation:nowISO() }, { merge:true });
         await setDoc(doc(db,'boutiques',uid,'utilisateurs',uid), { nom:'Propriétaire', email, role:'Propriétaire', dateAjout:nowISO() });
         await setDoc(doc(db,'membres',uid), { boutiqueId:uid, role:'Propriétaire', email });
       }
@@ -89,6 +97,7 @@ export function renderLogin(modeDepart){
       msg.textContent = traduireErreur(e.code);
       msg.style.display='block';
     }
+    ev.target.disabled = false;
   });
 }
 export function traduireErreur(code){
