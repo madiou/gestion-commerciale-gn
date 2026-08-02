@@ -10,6 +10,13 @@ async function seConnecter(page) {
   await page.locator('#login-pass').fill(DEMO_PASSWORD);
   await page.locator('#login-submit').click();
   await expect(page.locator('.nav-btn[data-view="dashboard"]')).toBeVisible({ timeout: 15000 });
+  // subscribeAll() ouvre une douzaine d'écouteurs onSnapshot Firestore dont les premières
+  // livraisons arrivent chacune de façon asynchrone et déclenchent un re-rendu complet ; si on
+  // remplit un champ de formulaire avant que ça se soit stabilisé, un de ces re-rendus tardifs
+  // l'efface (les champs texte ne sont pas liés à un état persistant). `networkidle` ne convient
+  // pas ici : les écouteurs Firestore sont des connexions persistantes (WebChannel), le réseau
+  // n'est donc jamais vraiment "idle". On attend simplement que ça se stabilise.
+  await page.waitForTimeout(800);
 }
 
 test('connexion, enregistrement d\'une vente, puis vérification dans le journal', async ({ page }) => {
@@ -27,9 +34,7 @@ test('connexion, enregistrement d\'une vente, puis vérification dans le journal
 
   await page.locator('#v-client').fill('Client E2E');
   await page.locator('#v-save').click();
-  // Le message de confirmation "#msg-vente" est écrasé instantanément par le renderContent() qui
-  // suit (bug connu, signalé séparément) — on vérifie donc directement le résultat de l'action
-  // plutôt que ce message éphémère.
+  await expect(page.locator('#msg-vente')).toContainText('Vente enregistrée');
   await expect(page.locator('.stock-panel')).toContainText('Client E2E', { timeout: 10000 });
 
   await page.locator('.nav-btn[data-view="journal"]').click();

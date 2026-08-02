@@ -3,7 +3,7 @@ import { db } from './firebase-config.js';
 import { currentUser, currentBoutiqueId, currentRole } from './auth.js';
 import { state } from './state.js';
 import { t } from './i18n.js';
-import { money, nowISO, todayISO, flash } from './helpers.js';
+import { money, nowISO, todayISO, flash, creerMessagePersistant } from './helpers.js';
 import { renderContent, nomUtilisateurCourant, enregistrerAudit } from './app-shell.js';
 import { detteFournisseur, avanceFournisseur, soldeFournisseur } from './business-logic.js';
 import { demanderConfirmationMotDePasse } from './confirmation-securisee.js';
@@ -11,8 +11,9 @@ export { detteFournisseur } from './business-logic.js';
 
 let showNouveauFournisseur = false;
 let fournisseurEnPaiement = null;
+const messageFournisseurs = creerMessagePersistant(()=>{ renderContent(); wireFournisseurs(); });
 
-export function resetFournisseursUI(){ showNouveauFournisseur = false; fournisseurEnPaiement = null; }
+export function resetFournisseursUI(){ showNouveauFournisseur = false; fournisseurEnPaiement = null; messageFournisseurs.effacer(); }
 
 function libelleSolde(solde){
   if(solde > 0) return `${t('dette_en_cours')} : <strong>${money(solde)}</strong>`;
@@ -28,7 +29,7 @@ function badgeSolde(solde){
 export function viewFournisseurs(){
   const fPaie = fournisseurEnPaiement ? state.fournisseurs.find(f=>f.id===fournisseurEnPaiement) : null;
   return `
-  <div class="msg ok" id="msg-fournisseurs"></div>
+  ${messageFournisseurs.html('msg-fournisseurs')}
   <div class="toolbar-stock">
     <input class="search-box" type="text" id="f-recherche" placeholder="${t('rechercher_fournisseur')}">
     <button class="btn btn-primaire" id="f-nouveau">${t('nouveau_fournisseur')}</button>
@@ -106,8 +107,7 @@ export function wireFournisseurs(){
       setDoc(doc(collection(db,'boutiques',currentBoutiqueId,'fournisseurs')), fournisseur).catch(e=>console.error('Erreur création fournisseur', e));
       enregistrerAudit('creation', 'fournisseur', nom);
       showNouveauFournisseur = false;
-      flash(msg, `Fournisseur "${nom}" ajouté.`, 'ok');
-      renderContent(); wireFournisseurs();
+      messageFournisseurs.afficher(`Fournisseur "${nom}" ajouté.`, 'ok');
     });
   }
   if(fournisseurEnPaiement){
@@ -133,8 +133,7 @@ export function wireFournisseurs(){
       const nouveauSolde = soldeAvant - montant;
       enregistrerAudit('remboursement', 'fournisseur', fPaie.nom, `${estAvance?t('avance'):t('dette')} : ${money(montant)}${produitConcerne?' — '+produitConcerne:''}`);
       fournisseurEnPaiement = null;
-      flash(msg, `${t('paiement_de')} ${money(montant)} ${t('enregistre_pour')} ${fPaie.nom}. ${libelleSolde(nouveauSolde).replace(/<\/?strong>/g,'')}`, 'ok');
-      renderContent(); wireFournisseurs();
+      messageFournisseurs.afficher(`${t('paiement_de')} ${money(montant)} ${t('enregistre_pour')} ${fPaie.nom}. ${libelleSolde(nouveauSolde).replace(/<\/?strong>/g,'')}`, 'ok');
     });
   }
 }

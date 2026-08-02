@@ -3,7 +3,7 @@ import { db } from './firebase-config.js';
 import { currentUser, currentBoutiqueId } from './auth.js';
 import { state, limitesDuPlan } from './state.js';
 import { t, traduirePaiement } from './i18n.js';
-import { FR, money, todayISO, nowISO, datetimeLocalParDefaut, fmtDateHeure, flash } from './helpers.js';
+import { FR, money, todayISO, nowISO, datetimeLocalParDefaut, fmtDateHeure, flash, creerMessagePersistant } from './helpers.js';
 import { resumeArticles } from './view-journal.js';
 import { renderContent, nomUtilisateurCourant, ventesCeMois, imprimerRecu, renderRecuHTML, exporterRecuPDF } from './app-shell.js';
 
@@ -11,14 +11,15 @@ let venteTemp = [];
 let venteEnRetour = null;
 let venteEnDetail = null;
 export let derniereVenteImprimable = null;
+const messageVente = creerMessagePersistant(()=>{ renderContent(); wireVente(); });
 
-export function resetVenteUI(){ venteTemp = []; venteEnRetour = null; venteEnDetail = null; }
+export function resetVenteUI(){ venteTemp = []; venteEnRetour = null; venteEnDetail = null; messageVente.effacer(); }
 export function ouvrirDetailVente(id){ venteEnDetail = id; }
 
 export function viewVente(){
   const options = state.produits.filter(p=>p.type!=='matiere_premiere').map(p=>`<option value="${p.id}">${p.numero?p.numero+' — ':''}${p.nom} (stock: ${p.stock})</option>`).join('');
   return `
-  <div class="msg ok" id="msg-vente"></div>
+  ${messageVente.html('msg-vente')}
   <div id="v-recu-action" style="margin-bottom:14px;"></div>
   <div class="form-wrap">
     <div class="form-grid cols3">
@@ -207,9 +208,8 @@ export function wireVente(){
     });
 
     venteTemp = [];
-    flash(msg, `Vente enregistrée : ${money(total)}`, 'ok');
     derniereVenteImprimable = { ...vente, id: venteRef.id };
-    renderContent(); wireVente();
+    messageVente.afficher(`Vente enregistrée : ${money(total)}`, 'ok');
   });
 
   document.querySelectorAll('[data-role="ouvrir-retour"]').forEach(b=>b.addEventListener('click', ()=>{
@@ -265,8 +265,7 @@ export function wireVente(){
       if(vente.clientId) retourDoc.clientId = vente.clientId;
       setDoc(doc(collection(db,'boutiques',currentBoutiqueId,'retours')), retourDoc).catch(e=>console.error('Erreur enregistrement retour', e));
       venteEnRetour = null;
-      flash(msg, `${t('retour_enregistre')} : ${money(totalRetour)}`, 'ok');
-      renderContent(); wireVente();
+      messageVente.afficher(`${t('retour_enregistre')} : ${money(totalRetour)}`, 'ok');
     });
   }
 }

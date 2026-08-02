@@ -3,18 +3,19 @@ import { db } from './firebase-config.js';
 import { currentUser, currentBoutiqueId } from './auth.js';
 import { state } from './state.js';
 import { t } from './i18n.js';
-import { todayISO, nowISO, flash } from './helpers.js';
+import { todayISO, nowISO, flash, creerMessagePersistant } from './helpers.js';
 import { renderContent, nomUtilisateurCourant } from './app-shell.js';
 
 let productionTemp = [];
+const messageProduction = creerMessagePersistant(()=>{ renderContent(); wireProduction(); });
 
-export function resetProductionUI(){ productionTemp = []; }
+export function resetProductionUI(){ productionTemp = []; messageProduction.effacer(); }
 
 export function viewProduction(){
   const optionsMatieres = state.produits.filter(p=>p.type==='matiere_premiere').map(p=>`<option value="${p.id}">${p.numero?p.numero+' — ':''}${p.nom} (stock: ${p.stock})</option>`).join('');
   const optionsFinis = state.produits.filter(p=>p.type!=='matiere_premiere').map(p=>`<option value="${p.id}">${p.numero?p.numero+' — ':''}${p.nom} (stock: ${p.stock})</option>`).join('');
   return `
-  <div class="msg ok" id="msg-production"></div>
+  ${messageProduction.html('msg-production')}
   <div class="form-wrap">
     <div style="font-size:12px;color:var(--texte-att);margin-bottom:14px;">${t('production_intro')}</div>
     <div class="form-grid cols3">
@@ -79,7 +80,6 @@ export function wireProduction(){
       matieresUtilisees, employeId: currentUser.uid, employeNom: nomUtilisateurCourant()
     }).catch(e=>console.error('Erreur enregistrement production', e));
     productionTemp = [];
-    flash(msg, `${t('production_enregistree')} : ${qteProduite} × ${produitFini.nom}`, 'ok');
-    renderContent(); wireProduction();
+    messageProduction.afficher(`${t('production_enregistree')} : ${qteProduite} × ${produitFini.nom}`, 'ok');
   });
 }

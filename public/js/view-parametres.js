@@ -3,16 +3,17 @@ import { db } from './firebase-config.js';
 import { currentBoutiqueId } from './auth.js';
 import { state } from './state.js';
 import { t } from './i18n.js';
-import { flash, redimensionnerImage } from './helpers.js';
-import { exporterSauvegardeComplete } from './app-shell.js';
+import { flash, redimensionnerImage, creerMessagePersistant } from './helpers.js';
+import { exporterSauvegardeComplete, renderContent } from './app-shell.js';
 
 let logoTemp = null; // null = pas de changement, '' = suppression demandée, sinon nouvelle image en base64
+const messageParametres = creerMessagePersistant(()=>{ renderContent(); wireParametres(); });
 
 export function viewParametres(){
   logoTemp = null;
   const logoActuel = state.logoBase64;
   return `
-  <div class="msg ok" id="msg-parametres"></div>
+  ${messageParametres.html('msg-parametres')}
   <div class="form-wrap">
     <div class="form-grid">
       <div class="champ"><label>${t('nom_boutique')}</label><input type="text" id="pb-nom" value="${state.nomBoutique||''}" placeholder="Ex : Boutique Diallo & Fils"></div>
@@ -68,7 +69,7 @@ export function wireParametres(){
     if(logoTemp !== null) donnees.logoBase64 = logoTemp;
     setDoc(doc(db,'boutiques',currentBoutiqueId), donnees, { merge:true }).catch(e=>console.error('Erreur enregistrement paramètres', e));
     logoTemp = null;
-    flash(msg, 'Informations enregistrées.', 'ok');
+    messageParametres.afficher('Informations enregistrées.', 'ok');
     ev.target.disabled = false;
   });
   document.getElementById('pb-sauvegarde').addEventListener('click', ()=>{

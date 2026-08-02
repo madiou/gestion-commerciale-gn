@@ -5,7 +5,7 @@ import { db, firebaseConfig } from './firebase-config.js';
 import { currentUser, currentBoutiqueId } from './auth.js';
 import { state } from './state.js';
 import { t } from './i18n.js';
-import { nowISO, fmtDateHeure, flash } from './helpers.js';
+import { nowISO, fmtDateHeure, flash, creerMessagePersistant } from './helpers.js';
 import { rolesDisponibles } from './business-logic.js';
 import { renderContent, enregistrerAudit } from './app-shell.js';
 import { demanderConfirmationMotDePasse } from './confirmation-securisee.js';
@@ -13,6 +13,7 @@ import { demanderConfirmationMotDePasse } from './confirmation-securisee.js';
 function libelleRole(role){ return role==='Gérant' ? t('role_gerant') : t('role_vendeur'); }
 
 let showNouvelUtilisateur = false;
+const messageUtilisateurs = creerMessagePersistant(()=>{ renderContent(); wireUtilisateurs(); });
 
 export async function creerCompteEmploye(email, motDePasse){
   const appSecondaire = initializeApp(firebaseConfig, 'secondaire-'+Date.now());
@@ -32,7 +33,7 @@ export function viewUtilisateurs(){
   const rolesDispoCreation = rolesDisponibles(state.plan, state.utilisateurs, null);
   const limiteAtteinte = rolesDispoCreation.length === 0;
   return `
-  <div class="msg ok" id="msg-utilisateurs"></div>
+  ${messageUtilisateurs.html('msg-utilisateurs')}
   <div class="toolbar-stock">
     <div style="font-size:12px;color:var(--texte-att);">${t('acces_boutique_role')}</div>
     <button class="btn btn-primaire" id="u-nouveau" ${limiteAtteinte?'disabled title="'+t('limite_utilisateurs_atteinte')+'"':''}>${t('nouvel_utilisateur')}</button>
@@ -85,14 +86,13 @@ function renderUtilisateursRows(){
     });
   }));
   document.querySelectorAll('[data-role="changer-role"]').forEach(sel=>sel.addEventListener('change', ()=>{
-    const msg = document.getElementById('msg-utilisateurs');
     const nouveauRole = sel.value;
     const utilisateur = state.utilisateurs.find(u=>u.id===sel.dataset.id);
     const ancienRole = utilisateur ? utilisateur.role : '?';
     updateDoc(doc(db,'boutiques',currentBoutiqueId,'utilisateurs',sel.dataset.id), { role:nouveauRole }).catch(e=>console.error('Erreur changement de rôle', e));
     updateDoc(doc(db,'membres',sel.dataset.id), { role:nouveauRole }).catch(e=>console.error('Erreur changement de rôle', e));
     enregistrerAudit('changement_role', 'utilisateur', utilisateur ? (utilisateur.nom||utilisateur.email) : sel.dataset.id, `${ancienRole} → ${nouveauRole}`);
-    flash(msg, `Rôle mis à jour : ${nouveauRole}.`, 'ok');
+    messageUtilisateurs.afficher(`Rôle mis à jour : ${nouveauRole}.`, 'ok');
   }));
 }
 export function wireUtilisateurs(){
@@ -116,8 +116,7 @@ export function wireUtilisateurs(){
         await setDoc(doc(db,'boutiques',currentBoutiqueId,'utilisateurs',newUid), { nom, email, role, dateAjout:nowISO() });
         await setDoc(doc(db,'membres',newUid), { boutiqueId:currentBoutiqueId, role, email });
         showNouvelUtilisateur = false;
-        flash(msg, `Utilisateur "${nom}" créé. Communiquez-lui ses identifiants.`, 'ok');
-        renderContent(); wireUtilisateurs();
+        messageUtilisateurs.afficher(`Utilisateur "${nom}" créé. Communiquez-lui ses identifiants.`, 'ok');
       }catch(e){
         flash(msg, e.code==='auth/email-already-in-use' ? 'Cet e-mail est déjà utilisé par un autre compte.' : "Erreur lors de la création du compte.", 'err');
         ev.target.disabled = false;

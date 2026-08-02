@@ -3,7 +3,7 @@ import { db } from './firebase-config.js';
 import { currentBoutiqueId, currentUser, currentRole } from './auth.js';
 import { state, limitesDuPlan } from './state.js';
 import { t } from './i18n.js';
-import { FR, money, nowISO, todayISO, fmtDateHeure, flash } from './helpers.js';
+import { FR, money, nowISO, todayISO, fmtDateHeure, flash, creerMessagePersistant } from './helpers.js';
 import { renderContent, nomUtilisateurCourant, statutStock, tagStatut, enregistrerAudit } from './app-shell.js';
 import { MODELE_CSV_PRODUITS, parseCSV, validerLignesProduits } from './business-logic.js';
 
@@ -11,8 +11,9 @@ let showNouveauProduit = false;
 let produitEnEdition = null;
 let showImportCSV = false;
 let analyseImport = null; // { valides, erreurs } après lecture du fichier
+const messageStock = creerMessagePersistant(()=>{ renderContent(); wireStock(); });
 
-export function resetStockUI(){ showNouveauProduit = false; produitEnEdition = null; showImportCSV = false; analyseImport = null; }
+export function resetStockUI(){ showNouveauProduit = false; produitEnEdition = null; showImportCSV = false; analyseImport = null; messageStock.effacer(); }
 
 function telechargerTexte(nomFichier, contenu){
   // BOM UTF-8 en tête : sans lui, Excel ouvre le fichier en encodage local et affiche les
@@ -28,7 +29,7 @@ function telechargerTexte(nomFichier, contenu){
 export function viewStock(){
   const pEdit = produitEnEdition ? state.produits.find(p=>p.id===produitEnEdition) : null;
   return `
-  <div class="msg ok" id="msg-stock"></div>
+  ${messageStock.html('msg-stock')}
   <div class="toolbar-stock">
     <input class="search-box" type="text" id="s-recherche" placeholder="${t('rechercher_produit')}">
     <div style="display:flex;gap:8px;">
@@ -152,6 +153,7 @@ export function wireStock(){
         prix_achat:parseInt(document.getElementById('np-pa').value||'0',10),
         prix_vente:parseInt(document.getElementById('np-pv').value||'0',10),
         seuil:parseInt(document.getElementById('np-seuil').value||'15',10) };
+      let texteMessageStock;
       if(produitEnEdition){
         const produitAvant = state.produits.find(p=>p.id===produitEnEdition);
         updateDoc(doc(db,'boutiques',currentBoutiqueId,'produits',produitEnEdition), donneesProduit).catch(e=>console.error('Erreur modification produit', e));
@@ -159,7 +161,7 @@ export function wireStock(){
           const diff = donneesProduit.stock - produitAvant.stock;
           enregistrerAudit('modification_stock', 'produit', nom, `${diff>0?'+':''}${diff} (${produitAvant.stock} → ${donneesProduit.stock})`);
         }
-        flash(msg, `Produit "${nom}" modifié.`, 'ok');
+        texteMessageStock = `Produit "${nom}" modifié.`;
       } else {
         donneesProduit.dateAjout = nowISO();
         const produitRef = doc(collection(db,'boutiques',currentBoutiqueId,'produits'));
@@ -189,11 +191,11 @@ export function wireStock(){
           }
           setDoc(doc(collection(db,'boutiques',currentBoutiqueId,'achats')), achatInit).catch(e=>console.error('Erreur création achat initial', e));
         }
-        flash(msg, `Produit "${nom}" ajouté.`, 'ok');
+        texteMessageStock = `Produit "${nom}" ajouté.`;
       }
       showNouveauProduit = false;
       produitEnEdition = null;
-      renderContent(); wireStock();
+      messageStock.afficher(texteMessageStock, 'ok');
     });
   }
 
@@ -241,8 +243,7 @@ export function wireStock(){
         enregistrerAudit('creation', 'produit', 'Import CSV', `${aImporter.length} produit(s) importé(s)`);
         const texteFinal = (tronque ? t('import_limite_plan').replace('{n}',aImporter.length).replace('{total}',totalValides)+' ' : '') + t('import_termine').replace('{n}', aImporter.length);
         showImportCSV = false; analyseImport = null;
-        renderContent(); wireStock();
-        flash(document.getElementById('msg-stock'), texteFinal, 'ok');
+        messageStock.afficher(texteFinal, 'ok');
       }catch(e){
         console.error('Erreur import CSV produits', e);
         flash(msg, t('erreur_generique'), 'err');

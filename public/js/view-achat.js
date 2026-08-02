@@ -3,18 +3,19 @@ import { db } from './firebase-config.js';
 import { currentUser, currentBoutiqueId } from './auth.js';
 import { state } from './state.js';
 import { t } from './i18n.js';
-import { FR, money, nowISO, datetimeLocalParDefaut, flash } from './helpers.js';
+import { FR, money, nowISO, datetimeLocalParDefaut, flash, creerMessagePersistant } from './helpers.js';
 import { renderContent, nomUtilisateurCourant } from './app-shell.js';
 import { avanceFournisseur } from './business-logic.js';
 
 let achatTemp = [];
+const messageAchat = creerMessagePersistant(()=>{ renderContent(); wireAchat(); });
 
-export function resetAchatUI(){ achatTemp = []; }
+export function resetAchatUI(){ achatTemp = []; messageAchat.effacer(); }
 
 export function viewAchat(){
   const options = state.produits.map(p=>`<option value="${p.id}">${p.numero?p.numero+' — ':''}${p.nom} (stock: ${p.stock})</option>`).join('');
   return `
-  <div class="msg ok" id="msg-achat"></div>
+  ${messageAchat.html('msg-achat')}
   <div class="form-wrap">
     <div class="form-grid cols3">
       <div class="champ"><label>${t('date_heure')}</label><input type="datetime-local" id="a-datetime" value="${datetimeLocalParDefaut()}"></div>
@@ -121,7 +122,6 @@ export function wireAchat(){
 
     achatTemp = [];
     const resteMsg = (montantPaye>0 && montantPaye<total) ? ` (${money(montantPaye)} payé, ${money(total-montantPaye)} en dette)` : '';
-    flash(msg, `Achat enregistré : ${money(total)}${resteMsg}`, 'ok');
-    renderContent(); wireAchat();
+    messageAchat.afficher(`Achat enregistré : ${money(total)}${resteMsg}`, 'ok');
   });
 }

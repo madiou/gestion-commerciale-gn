@@ -3,7 +3,7 @@ import { db } from './firebase-config.js';
 import { currentUser, currentBoutiqueId, currentRole } from './auth.js';
 import { state } from './state.js';
 import { t } from './i18n.js';
-import { money, todayISO, nowISO, fmtDate, flash } from './helpers.js';
+import { money, todayISO, nowISO, fmtDate, flash, creerMessagePersistant } from './helpers.js';
 import { renderContent, nomUtilisateurCourant, enregistrerAudit } from './app-shell.js';
 import { creditClient, MODELE_CSV_CLIENTS, parseCSV, validerLignesClients } from './business-logic.js';
 import { demanderConfirmationMotDePasse } from './confirmation-securisee.js';
@@ -13,8 +13,9 @@ let showNouveauClient = false;
 let clientEnPaiement = null;
 let showImportCSV = false;
 let analyseImport = null;
+const messageClients = creerMessagePersistant(()=>{ renderContent(); wireClients(); });
 
-export function resetClientsUI(){ showNouveauClient = false; clientEnPaiement = null; showImportCSV = false; analyseImport = null; }
+export function resetClientsUI(){ showNouveauClient = false; clientEnPaiement = null; showImportCSV = false; analyseImport = null; messageClients.effacer(); }
 
 function telechargerTexte(nomFichier, contenu){
   // BOM UTF-8 en tête : sans lui, Excel ouvre le fichier en encodage local et affiche les
@@ -30,7 +31,7 @@ function telechargerTexte(nomFichier, contenu){
 export function viewClients(){
   const cPaie = clientEnPaiement ? state.clients.find(c=>c.id===clientEnPaiement) : null;
   return `
-  <div class="msg ok" id="msg-clients"></div>
+  ${messageClients.html('msg-clients')}
   <div class="toolbar-stock">
     <input class="search-box" type="text" id="c-recherche" placeholder="${t('rechercher_client')}">
     <div style="display:flex;gap:8px;">
@@ -124,8 +125,7 @@ export function wireClients(){
       const client = { nom, telephone:document.getElementById('nc-tel').value.trim(), date_inscription:document.getElementById('nc-date').value||todayISO(), adresse:document.getElementById('nc-adresse').value.trim(), notes:document.getElementById('nc-notes').value.trim() };
       setDoc(doc(collection(db,'boutiques',currentBoutiqueId,'clients')), client).catch(e=>console.error('Erreur création client', e));
       showNouveauClient = false;
-      flash(msg, `Client "${nom}" ajouté.`, 'ok');
-      renderContent(); wireClients();
+      messageClients.afficher(`Client "${nom}" ajouté.`, 'ok');
     });
   }
   if(clientEnPaiement){
@@ -145,8 +145,7 @@ export function wireClients(){
       }).catch(e=>console.error('Erreur enregistrement paiement', e));
       enregistrerAudit('remboursement', 'client', cPaie.nom, `Crédit remboursé : ${money(montant)}`);
       clientEnPaiement = null;
-      flash(msg, `Paiement de ${money(montant)} enregistré pour ${cPaie.nom}.`, 'ok');
-      renderContent(); wireClients();
+      messageClients.afficher(`Paiement de ${money(montant)} enregistré pour ${cPaie.nom}.`, 'ok');
     });
   }
 
@@ -186,8 +185,7 @@ export function wireClients(){
         }
         enregistrerAudit('creation', 'client', 'Import CSV', `${aImporter.length} client(s) importé(s)`);
         showImportCSV = false; analyseImport = null;
-        renderContent(); wireClients();
-        flash(document.getElementById('msg-clients'), t('import_termine').replace('{n}', aImporter.length), 'ok');
+        messageClients.afficher(t('import_termine').replace('{n}', aImporter.length), 'ok');
       }catch(e){
         console.error('Erreur import CSV clients', e);
         flash(msg, t('erreur_generique'), 'err');

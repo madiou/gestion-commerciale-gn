@@ -3,8 +3,10 @@ import { db } from './firebase-config.js';
 import { currentBoutiqueId } from './auth.js';
 import { state } from './state.js';
 import { t } from './i18n.js';
-import { money, todayISO, flash } from './helpers.js';
+import { money, todayISO, flash, creerMessagePersistant } from './helpers.js';
 import { debutPeriode, renderContent } from './app-shell.js';
+
+const messageFinance = creerMessagePersistant(()=>{ renderContent(); wireFinance(); });
 
 export function viewFinance(){
   const debut = debutPeriode('mois');
@@ -24,7 +26,7 @@ export function viewFinance(){
   Object.keys(dettesFournisseurs).forEach(f=>{ if(dettesFournisseurs[f]<=0) delete dettesFournisseurs[f]; });
   const maxBar = Math.max(recettes, depensesTotal, Math.abs(benefice), 1);
   return `
-  <div class="msg ok" id="msg-finance"></div>
+  ${messageFinance.html('msg-finance')}
   <div class="panels">
     <div class="panel">
       <h3>${t('recettes_depenses_30j')}</h3>
@@ -67,7 +69,6 @@ export function wireFinance(){
     if(!desc || montant<=0){ flash(msg,'Indiquez une description et un montant valides.','err'); return; }
     ev.target.disabled = true;
     setDoc(doc(collection(db,'boutiques',currentBoutiqueId,'depenses')), { date:todayISO(), description:desc, montant, categorie:'Général' }).catch(e=>console.error('Erreur enregistrement dépense', e));
-    flash(msg, 'Dépense ajoutée.', 'ok');
-    renderContent(); wireFinance();
+    messageFinance.afficher('Dépense ajoutée.', 'ok');
   });
 }

@@ -2,13 +2,14 @@ import { collection, doc, getDoc, getDocs, setDoc, updateDoc, arrayUnion } from 
 import { db } from './firebase-config.js';
 import { currentUser } from './auth.js';
 import { t } from './i18n.js';
-import { moneyUSD, nowISO, fmtDate, flash } from './helpers.js';
+import { moneyUSD, nowISO, fmtDate, flash, creerMessagePersistant } from './helpers.js';
 import { creerCompteEmploye } from './view-utilisateurs.js';
 import { enregistrerJournalAdmin } from './app-shell.js';
 
 let showNouvelleBoutique = false;
 let toutesLesBoutiques = null; // cache pour le panneau super-admin
 let tarifsActuels = null; // cache du document config/tarifs
+const messageAdmin = creerMessagePersistant(()=>rerenderAdminContent());
 
 const PLANS_TARIFES = ['standard', 'pro', 'entreprise'];
 
@@ -38,7 +39,7 @@ export function calculerNouvelleDateAbonnement(dateActuelle, jours){
 }
 export function viewAdmin(){
   return `
-  <div class="msg ok" id="msg-admin"></div>
+  ${messageAdmin.html('msg-admin')}
   <div class="toolbar-stock">
     <div style="font-size:12px;color:var(--texte-att);">${t('admin_intro')}</div>
     <div style="display:flex;gap:8px;">
@@ -160,8 +161,7 @@ async function renderAdminRows(){
     const boutique = toutesLesBoutiques.find(x=>x.id===btn.dataset.id);
     if(boutique){ boutique.plan='gratuit'; boutique.dateExpirationAbonnement=null; }
     enregistrerJournalAdmin('repasser_gratuit', btn.dataset.id, boutique?boutique.nomBoutique:'', '');
-    flash(document.getElementById('msg-admin'), t('boutique_repassee_gratuit'), 'ok');
-    renderAdminRows();
+    messageAdmin.afficher(t('boutique_repassee_gratuit'), 'ok');
   }));
 }
 async function appliquerAbonnement(boutiqueId, jours, dateChoisie, plan){
@@ -175,8 +175,7 @@ async function appliquerAbonnement(boutiqueId, jours, dateChoisie, plan){
   });
   if(boutique){ boutique.plan=planFinal; boutique.dateExpirationAbonnement=nouvelleDate; }
   enregistrerJournalAdmin('changement_abonnement', boutiqueId, boutique?boutique.nomBoutique:'', `${libellePlan(planFinal)} — ${nouvelleDate}`);
-  flash(document.getElementById('msg-admin'), `${t('abonnement_mis_a_jour')} (${libellePlan(planFinal)}) ${fmtDate(nouvelleDate)}`, 'ok');
-  renderAdminRows();
+  messageAdmin.afficher(`${t('abonnement_mis_a_jour')} (${libellePlan(planFinal)}) ${fmtDate(nouvelleDate)}`, 'ok');
 }
 async function chargerTarifs(){
   if(!tarifsActuels){
@@ -207,9 +206,7 @@ function wireTarifs(){
       await setDoc(doc(db,'config','tarifs'), nouveau, { merge:true });
       tarifsActuels = nouveau;
       enregistrerJournalAdmin('tarifs_modifies', '', '', '');
-      flash(document.getElementById('msg-admin'), t('tarifs_enregistres'), 'ok');
-      const corps = document.getElementById('tarifs-corps');
-      if(corps){ corps.innerHTML = tarifsFormHTML(); wireTarifs(); }
+      messageAdmin.afficher(t('tarifs_enregistres'), 'ok');
     }catch(e){
       flash(document.getElementById('msg-admin'), t('erreur_generique'), 'err');
     }finally{
@@ -239,8 +236,7 @@ export function wireAdmin(){
         enregistrerJournalAdmin('creation_boutique', newUid, nomBoutique, email);
         showNouvelleBoutique = false;
         toutesLesBoutiques = null;
-        rerenderAdminContent();
-        flash(document.getElementById('msg-admin'), t('boutique_creee')+' '+email, 'ok');
+        messageAdmin.afficher(t('boutique_creee')+' '+email, 'ok');
       }catch(e){
         flash(document.getElementById('msg-admin'), e.code==='auth/email-already-in-use' ? t('email_deja_utilise') : t('erreur_creation_boutique'), 'err');
         ev.target.disabled = false;

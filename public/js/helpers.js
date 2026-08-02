@@ -49,6 +49,30 @@ export function flash(el,msg,type){
   el.textContent = msg; el.className = 'msg '+type; el.style.display='block';
   setTimeout(()=>{ el.style.display='none'; }, 3500);
 }
+// flash() pose le texte sur un noeud DOM existant : ça suffit pour un message d'erreur de
+// validation (rien ne re-rend juste après), mais un message de succès qui suit une écriture
+// Firestore est perdu — le renderContent() explicite qui suit efface le noeud, ET l'écouteur
+// onSnapshot déclenche presque aussitôt un second re-rendu global dès que l'écriture est
+// synchronisée localement. creerMessagePersistant() tient l'état hors du DOM à la place, pour
+// qu'il survive à n'importe quel nombre de re-rendus intermédiaires jusqu'à son expiration.
+export function creerMessagePersistant(rafraichir){
+  let etat = null;
+  let minuteur = null;
+  return {
+    afficher(texte, type='ok'){
+      if(minuteur) clearTimeout(minuteur);
+      etat = { texte, type };
+      rafraichir();
+      minuteur = setTimeout(()=>{ etat = null; minuteur = null; rafraichir(); }, 3500);
+    },
+    effacer(){ etat = null; if(minuteur) clearTimeout(minuteur); minuteur = null; },
+    html(id){
+      return etat
+        ? `<div class="msg ${etat.type}" id="${id}" style="display:block;">${etat.texte}</div>`
+        : `<div class="msg ok" id="${id}"></div>`;
+    }
+  };
+}
 export function redimensionnerImage(file, maxDim){
   return new Promise((resolve,reject)=>{
     const reader = new FileReader();
