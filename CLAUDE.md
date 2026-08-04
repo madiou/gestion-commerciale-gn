@@ -158,9 +158,13 @@ utilisateur est simulé via `testEnv.authenticatedContext(uid, { email })` /
 `testEnv.withSecurityRulesDisabled()`. En modifiant `firestore.rules`, mettre à jour ce fichier de
 tests dans la même modification — c'est la seule protection automatisée contre une régression du
 piège du catch-all (voir Modèle de données Firestore ci-dessus) ou contre l'ouverture accidentelle
-d'un accès qui ne devrait pas exister (ex. le super-admin n'a délibérément accès à aucune
-sous-collection métier d'une boutique, seulement au document racine et à `utilisateurs/` — un test
-le vérifie explicitement).
+d'un accès qui ne devrait pas exister. Le super-admin n'a normalement AUCUN accès aux données
+métier d'une boutique en usage courant (il ne devient jamais "membre") ; seule exception
+délibérée : lecture + suppression sur toutes les sous-collections, exclusivement pour
+`supprimerBoutiqueCascade()` (`view-admin.js`, bouton "Supprimer" du panneau Administration) — qui
+doit d'abord LISTER les documents d'une sous-collection avant de les supprimer un à un, donc la
+seule permission de suppression ne suffit pas. Cet accès en lecture n'est exposé nulle part
+ailleurs dans l'interface. Voir les tests `firestore-rules.test.js` marqués "purge de boutique".
 
 `tests/e2e/` contient les tests Playwright, qui pilotent un vrai navigateur contre l'app réelle
 (HTML/CSS/JS servis tels quels, comme en prod) plutôt que d'appeler des fonctions isolément — c'est

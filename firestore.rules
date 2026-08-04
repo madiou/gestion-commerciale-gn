@@ -103,6 +103,11 @@ service cloud.firestore {
       // Les Vendeurs n'ont pas accès aux données financières.
       match /depenses/{docId} {
         allow read, write: if estMembre() && monRole() != 'Vendeur';
+        // Lecture + suppression pour le super-admin : supprimerBoutiqueCascade() (view-admin.js)
+        // doit d'abord LISTER les documents d'une sous-collection avant de les supprimer un à un —
+        // la seule suppression ne suffit pas pour ça. Cet accès n'est exposé nulle part ailleurs
+        // dans l'interface du super-admin.
+        allow read, delete: if isSuperAdmin();
       }
 
       // Tout membre peut créer/lire/modifier des clients, mais seul le Propriétaire peut en
@@ -112,6 +117,7 @@ service cloud.firestore {
       match /clients/{docId} {
         allow read, create, update: if estMembre();
         allow delete: if estMembre() && monRole() == 'Propriétaire';
+        allow read, delete: if isSuperAdmin(); // voir supprimerBoutiqueCascade() dans view-admin.js
       }
 
       // Tout membre peut créer/lire/modifier un fournisseur, mais seul le Propriétaire peut en
@@ -119,23 +125,35 @@ service cloud.firestore {
       match /fournisseurs/{docId} {
         allow read, create, update: if estMembre();
         allow delete: if estMembre() && monRole() == 'Propriétaire';
+        allow read, delete: if isSuperAdmin(); // voir supprimerBoutiqueCascade() dans view-admin.js
       }
 
       // Journal d'audit : toute action sensible (suppression, changement de rôle) y est enregistrée.
       // Append-only — aucune modification ni suppression n'est permise, même par le Propriétaire,
-      // pour que le journal reste une trace fiable. Masqué aux Vendeurs en lecture.
+      // pour que le journal reste une trace fiable. Masqué aux Vendeurs en lecture. Exception :
+      // le super-admin peut le lire et le supprimer, uniquement dans le cadre d'une suppression
+      // complète de boutique (supprimerBoutiqueCascade() dans view-admin.js) — sinon des documents
+      // journalAudit resteraient orphelins indéfiniment après la suppression de leur boutique.
       match /journalAudit/{docId} {
         allow read: if estMembre() && monRole() == 'Propriétaire';
         allow create: if estMembre();
-        allow update, delete: if false;
+        allow update: if false;
+        allow read, delete: if isSuperAdmin();
       }
 
       // Toutes les autres sous-collections (produits, ventes, achats...) : accessibles à tout membre.
       // Exclut les collections ayant déjà une règle dédiée ci-dessus : sans ce garde-fou, Firestore
       // évalue TOUTES les règles qui matchent un chemin et autorise l'accès si UNE SEULE le permet,
       // ce qui annulerait silencieusement les restrictions dédiées à clients/fournisseurs/depenses/utilisateurs/journalAudit.
+      // Le super-admin n'a normalement AUCUN accès aux données métier d'une boutique en usage courant
+      // (il ne devient jamais "membre") — seuls lecture+suppression lui sont ouverts, strictement
+      // pour lister puis purger les sous-collections lors d'une suppression complète de boutique
+      // (supprimerBoutiqueCascade() dans view-admin.js) ; cet accès n'est jamais exposé pour parcourir
+      // les données d'une boutique active. Ne pas élargir à write sans raison.
       match /{collectionPath}/{docId} {
         allow read, write: if estMembre() && !(collectionPath in ['clients', 'fournisseurs', 'depenses', 'utilisateurs', 'journalAudit']);
+        allow read, delete: if isSuperAdmin();
+        allow delete: if isSuperAdmin();
       }
     }
   }

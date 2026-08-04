@@ -179,6 +179,12 @@ test('depenses: accessibles aux membres non-Vendeur, interdites au Vendeur', asy
   await assertFails(setDoc(doc(dbUser('vendeur1'), 'boutiques', 'b1', 'depenses', 'd2'), { montant: 100 }));
   await assertFails(getDoc(doc(dbUser('vendeur1'), 'boutiques', 'b1', 'depenses', 'd1')));
 });
+test('depenses: le super-admin peut lire et supprimer (purge de boutique) mais pas créer', async () => {
+  await seed(db => setDoc(doc(db, 'boutiques', 'b1', 'depenses', 'd1'), { montant: 100 }));
+  await assertSucceeds(getDoc(doc(dbSuperAdmin(), 'boutiques', 'b1', 'depenses', 'd1')));
+  await assertFails(setDoc(doc(dbSuperAdmin(), 'boutiques', 'b1', 'depenses', 'd2'), { montant: 1 }));
+  await assertSucceeds(deleteDoc(doc(dbSuperAdmin(), 'boutiques', 'b1', 'depenses', 'd1')));
+});
 
 // ---------- clients ----------
 test('clients: tout membre peut créer/lire/modifier, seul le Propriétaire peut supprimer', async () => {
@@ -188,6 +194,10 @@ test('clients: tout membre peut créer/lire/modifier, seul le Propriétaire peut
   await assertSucceeds(updateDoc(doc(dbUser('vendeur1'), 'boutiques', 'b1', 'clients', 'c1'), { nom: 'Client 1 modifié' }));
   await assertFails(deleteDoc(doc(dbUser('vendeur1'), 'boutiques', 'b1', 'clients', 'c1')));
   await assertSucceeds(deleteDoc(doc(dbUser('proprio'), 'boutiques', 'b1', 'clients', 'c1')));
+});
+test('clients: le super-admin peut aussi supprimer (purge de boutique)', async () => {
+  await seed(db => setDoc(doc(db, 'boutiques', 'b1', 'clients', 'c1'), { nom: 'Client 1' }));
+  await assertSucceeds(deleteDoc(doc(dbSuperAdmin(), 'boutiques', 'b1', 'clients', 'c1')));
 });
 
 // ---------- fournisseurs ----------
@@ -200,15 +210,19 @@ test('fournisseurs: tout membre peut créer/lire/modifier, seul le Propriétaire
 });
 
 // ---------- journalAudit ----------
-test('journalAudit: append-only, lecture réservée au Propriétaire, super-admin exclu (non-membre)', async () => {
+test('journalAudit: append-only (même pour le Propriétaire), lecture réservée au Propriétaire (et au super-admin)', async () => {
   await seedMembre('b1', 'proprio', 'Propriétaire');
   await seedMembre('b1', 'vendeur1', 'Vendeur');
   await assertSucceeds(setDoc(doc(dbUser('vendeur1'), 'boutiques', 'b1', 'journalAudit', 'j1'), { action: 'suppression' }));
   await assertFails(getDoc(doc(dbUser('vendeur1'), 'boutiques', 'b1', 'journalAudit', 'j1')));
   await assertSucceeds(getDoc(doc(dbUser('proprio'), 'boutiques', 'b1', 'journalAudit', 'j1')));
-  await assertFails(getDoc(doc(dbSuperAdmin(), 'boutiques', 'b1', 'journalAudit', 'j1')));
   await assertFails(updateDoc(doc(dbUser('proprio'), 'boutiques', 'b1', 'journalAudit', 'j1'), { action: 'modifie' }));
   await assertFails(deleteDoc(doc(dbUser('proprio'), 'boutiques', 'b1', 'journalAudit', 'j1')));
+});
+test('journalAudit: le super-admin peut le supprimer (purge lors d\'une suppression de boutique), mais pas le modifier', async () => {
+  await seed(db => setDoc(doc(db, 'boutiques', 'b1', 'journalAudit', 'j1'), { action: 'suppression' }));
+  await assertFails(updateDoc(doc(dbSuperAdmin(), 'boutiques', 'b1', 'journalAudit', 'j1'), { action: 'modifie' }));
+  await assertSucceeds(deleteDoc(doc(dbSuperAdmin(), 'boutiques', 'b1', 'journalAudit', 'j1')));
 });
 
 // ---------- règle générique (catch-all) ----------
@@ -221,9 +235,13 @@ test('catch-all: un non-membre n\'a accès à aucune sous-collection', async () 
   await seed(db => setDoc(doc(db, 'boutiques', 'b1', 'produits', 'p1'), { nom: 'Produit 1' }));
   await assertFails(getDoc(doc(dbUser('etranger'), 'boutiques', 'b1', 'produits', 'p1')));
 });
-test('catch-all: le super-admin (non-membre) n\'a PAS accès aux sous-collections métier', async () => {
+test('catch-all: le super-admin (non-membre) peut lire et supprimer (purge) mais pas écrire dans les sous-collections métier', async () => {
   await seed(db => setDoc(doc(db, 'boutiques', 'b1', 'produits', 'p1'), { nom: 'Produit 1' }));
-  await assertFails(getDoc(doc(dbSuperAdmin(), 'boutiques', 'b1', 'produits', 'p1')));
+  // Lecture ouverte uniquement pour que supprimerBoutiqueCascade() (view-admin.js) puisse LISTER
+  // les documents avant de les supprimer un à un — jamais utilisée ailleurs dans l'interface.
+  await assertSucceeds(getDoc(doc(dbSuperAdmin(), 'boutiques', 'b1', 'produits', 'p1')));
+  await assertFails(setDoc(doc(dbSuperAdmin(), 'boutiques', 'b1', 'produits', 'p2'), { nom: 'Produit 2' }));
+  await assertSucceeds(deleteDoc(doc(dbSuperAdmin(), 'boutiques', 'b1', 'produits', 'p1')));
 });
 test('catch-all: la liste d\'exclusion protège bien clients/fournisseurs/depenses/utilisateurs/journalAudit d\'un contournement', async () => {
   // Piège documenté dans CLAUDE.md : si un nom de collection protégée disparaissait de la liste
@@ -232,4 +250,28 @@ test('catch-all: la liste d\'exclusion protège bien clients/fournisseurs/depens
   await seedMembre('b1', 'vendeur1', 'Vendeur');
   await seed(db => setDoc(doc(db, 'boutiques', 'b1', 'clients', 'c1'), { nom: 'Client 1' }));
   await assertFails(deleteDoc(doc(dbUser('vendeur1'), 'boutiques', 'b1', 'clients', 'c1')));
+});
+
+// ---------- suppression complète d'une boutique (supprimerBoutiqueCascade, view-admin.js) ----------
+test('suppression de boutique: le super-admin peut purger toutes les sous-collections puis la boutique elle-même', async () => {
+  await seedMembre('b1', 'proprio', 'Propriétaire');
+  await seed(db => Promise.all([
+    setDoc(doc(db, 'boutiques', 'b1', 'produits', 'p1'), { nom: 'P1' }),
+    setDoc(doc(db, 'boutiques', 'b1', 'ventes', 'v1'), { total: 10 }),
+    setDoc(doc(db, 'boutiques', 'b1', 'clients', 'c1'), { nom: 'C1' }),
+    setDoc(doc(db, 'boutiques', 'b1', 'fournisseurs', 'f1'), { nom: 'F1' }),
+    setDoc(doc(db, 'boutiques', 'b1', 'depenses', 'd1'), { montant: 5 }),
+    setDoc(doc(db, 'boutiques', 'b1', 'journalAudit', 'j1'), { action: 'x' }),
+    setDoc(doc(db, 'membres', 'proprio'), { boutiqueId: 'b1', role: 'Propriétaire' })
+  ]));
+  const admin = dbSuperAdmin();
+  await assertSucceeds(deleteDoc(doc(admin, 'boutiques', 'b1', 'produits', 'p1')));
+  await assertSucceeds(deleteDoc(doc(admin, 'boutiques', 'b1', 'ventes', 'v1')));
+  await assertSucceeds(deleteDoc(doc(admin, 'boutiques', 'b1', 'clients', 'c1')));
+  await assertSucceeds(deleteDoc(doc(admin, 'boutiques', 'b1', 'fournisseurs', 'f1')));
+  await assertSucceeds(deleteDoc(doc(admin, 'boutiques', 'b1', 'depenses', 'd1')));
+  await assertSucceeds(deleteDoc(doc(admin, 'boutiques', 'b1', 'journalAudit', 'j1')));
+  await assertSucceeds(deleteDoc(doc(admin, 'boutiques', 'b1', 'utilisateurs', 'proprio')));
+  await assertSucceeds(deleteDoc(doc(admin, 'membres', 'proprio')));
+  await assertSucceeds(deleteDoc(doc(admin, 'boutiques', 'b1')));
 });

@@ -1,10 +1,44 @@
-import { collection, doc, getDoc, getDocs, setDoc, updateDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js";
+import { collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, writeBatch, arrayUnion } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js";
 import { db } from './firebase-config.js';
 import { currentUser } from './auth.js';
 import { t } from './i18n.js';
 import { moneyUSD, nowISO, fmtDate, flash, creerMessagePersistant } from './helpers.js';
 import { creerCompteEmploye } from './view-utilisateurs.js';
 import { enregistrerJournalAdmin } from './app-shell.js';
+import { demanderConfirmationMotDePasse } from './confirmation-securisee.js';
+
+// Toutes les sous-collections d'une boutique (voir CLAUDE.md, "Modèle de données Firestore") —
+// à tenir à jour si une nouvelle sous-collection est ajoutée, sinon supprimerBoutiqueCascade()
+// laisserait des données orphelines derrière elle.
+const SOUS_COLLECTIONS_BOUTIQUE = ['produits','ventes','achats','depenses','clients','utilisateurs','paiements','fournisseurs','paiementsFournisseurs','productions','retours','journalAudit'];
+
+// Supprime une boutique et toutes ses données. Le super-admin n'a pas le droit de LIRE les
+// pointeurs membres/{uid} des autres comptes (règles Firestore, lecture réservée au titulaire),
+// mais peut les SUPPRIMER en aveugle par uid — donc on récupère la liste des comptes via la
+// sous-collection utilisateurs (lisible par le super-admin) plutôt que via une requête sur membres.
+async function supprimerBoutiqueCascade(boutiqueId){
+  const utilisateursSnap = await getDocs(collection(db,'boutiques',boutiqueId,'utilisateurs'));
+  const uids = utilisateursSnap.docs.map(d=>d.id);
+
+  for(const nomSousCollection of SOUS_COLLECTIONS_BOUTIQUE){
+    const snap = await getDocs(collection(db,'boutiques',boutiqueId,nomSousCollection));
+    for(let i=0; i<snap.docs.length; i+=450){
+      const lot = snap.docs.slice(i, i+450);
+      const batch = writeBatch(db);
+      lot.forEach(d=>batch.delete(d.ref));
+      await batch.commit();
+    }
+  }
+
+  for(let i=0; i<uids.length; i+=450){
+    const lot = uids.slice(i, i+450);
+    const batch = writeBatch(db);
+    lot.forEach(uid=>batch.delete(doc(db,'membres',uid)));
+    await batch.commit();
+  }
+
+  await deleteDoc(doc(db,'boutiques',boutiqueId));
+}
 
 let showNouvelleBoutique = false;
 let toutesLesBoutiques = null; // cache pour le panneau super-admin
@@ -140,6 +174,7 @@ async function renderAdminRows(){
         <button class="btn btn-primaire" style="padding:5px 10px;font-size:12px;" data-role="prolonger30" data-id="${b.id}">${t('prolonger_30j')}</button>
         <button class="btn btn-secondaire" style="padding:5px 10px;font-size:12px;" data-role="appliquer-date" data-id="${b.id}">${t('appliquer_date')}</button>
         <button class="btn-danger" style="padding:5px 10px;font-size:12px;" data-role="repasser-gratuit" data-id="${b.id}">${t('repasser_gratuit')}</button>
+        <button class="btn-danger" style="padding:5px 10px;font-size:12px;" data-role="supprimer-boutique" data-id="${b.id}">${t('supprimer_boutique')}</button>
       </td>
     </tr>`;
   }).join('') || `<tr><td colspan="7" style="color:var(--texte-att);">${t('aucune_boutique')}</td></tr>`;
@@ -162,6 +197,28 @@ async function renderAdminRows(){
     if(boutique){ boutique.plan='gratuit'; boutique.dateExpirationAbonnement=null; }
     enregistrerJournalAdmin('repasser_gratuit', btn.dataset.id, boutique?boutique.nomBoutique:'', '');
     messageAdmin.afficher(t('boutique_repassee_gratuit'), 'ok');
+  }));
+  document.querySelectorAll('[data-role="supprimer-boutique"]').forEach(btn=>btn.addEventListener('click', ()=>{
+    const boutiqueId = btn.dataset.id;
+    const boutique = toutesLesBoutiques.find(x=>x.id===boutiqueId);
+    const nomBoutique = boutique ? (boutique.nomBoutique || boutique.emailProprietaire || boutiqueId) : boutiqueId;
+    demanderConfirmationMotDePasse({
+      titre: t('confirmer_suppression_boutique_titre'),
+      message: `« ${nomBoutique} » — ${t('confirmer_suppression_boutique_message')}`,
+      texteConfirmer: t('supprimer_boutique'),
+      onConfirme: async () => {
+        messageAdmin.afficher(t('suppression_en_cours'), 'ok');
+        try{
+          await supprimerBoutiqueCascade(boutiqueId);
+          toutesLesBoutiques = toutesLesBoutiques.filter(x=>x.id!==boutiqueId);
+          enregistrerJournalAdmin('suppression_boutique', boutiqueId, nomBoutique, '');
+          messageAdmin.afficher(t('boutique_supprimee'), 'ok');
+        }catch(e){
+          console.error('Erreur suppression boutique', e);
+          messageAdmin.afficher(t('erreur_generique'), 'err');
+        }
+      }
+    });
   }));
 }
 async function appliquerAbonnement(boutiqueId, jours, dateChoisie, plan){
