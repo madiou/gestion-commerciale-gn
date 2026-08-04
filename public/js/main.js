@@ -1,5 +1,6 @@
 // Point d'entrée : importer auth.js suffit à charger tout le graphe de modules
 // et à enregistrer l'écouteur onAuthStateChanged qui démarre l'application.
+import './monitoring.js';
 import './auth.js';
 
 if ('serviceWorker' in navigator) {

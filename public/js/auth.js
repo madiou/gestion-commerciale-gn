@@ -8,6 +8,7 @@ import { essaiGratuitExpire, calculerDureeSecondes } from './business-logic.js';
 import { render } from './app-shell.js';
 import { renderLogin } from './view-login.js';
 import { renderAccueil } from './view-accueil.js';
+import { definirUtilisateurSentry } from './monitoring.js';
 
 export let currentUser = null;
 export let currentBoutiqueId = null;
@@ -108,6 +109,7 @@ export async function subscribeAll(boutiqueId){
 
 onAuthStateChanged(auth, async (user)=>{
   currentUser = user;
+  definirUtilisateurSentry(user ? user.email : null);
   unsubs.forEach(u=>u());
   unsubs = [];
   if(user){

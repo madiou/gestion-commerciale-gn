@@ -133,6 +133,19 @@ payante ne régresse pas. Le panneau super-admin (`view-admin.js`, réservé à 
 est le seul moyen de changer le plan/l'expiration d'une boutique — il n'y a pas de parcours de
 paiement intégré, c'est géré manuellement.
 
+### Suivi d'erreurs (Sentry)
+
+`public/js/monitoring.js` initialise Sentry côté navigateur, à partir du SDK chargé en
+`<script defer>` depuis le CDN de Sentry dans `index.html` (deux bundles : `bundle.min.js` +
+`captureconsole.min.js`, avec hash `integrity` — vérifier/régénérer ce hash si la version pinnée
+change). `captureConsoleIntegration` est indispensable ici : la plupart des écritures Firestore de
+l'appli échouent en silence (`setDoc(...).catch(e=>console.error(...))`), donc sans cette
+intégration, aucune de ces erreurs ne remonterait jamais à Sentry. Le suivi est **désactivé sur
+localhost et pendant les tests e2e** (paramètre `?e2e=1`) pour ne pas polluer les rapports avec du
+bruit de développement/test — voir la condition `ACTIF` en tête du fichier. `auth.js` appelle
+`definirUtilisateurSentry(email)` à chaque changement de session pour associer les erreurs
+rapportées à la boutique concernée.
+
 ### i18n
 
 `i18n.js` exporte un objet `DICO` avec des clés `fr`/`en` et une fonction de lookup `t(key)` ;
