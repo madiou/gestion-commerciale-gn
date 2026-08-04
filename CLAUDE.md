@@ -44,6 +44,8 @@ pour la suite de tests et les scripts d'administration.
   l'API REST Firestore + le jeton de rafraîchissement local de `firebase login` — voir le
   commentaire en tête du script pour le détail de l'authentification)
 - Vérifier la syntaxe d'un seul fichier sans l'exécuter : `node --check public/js/<fichier>.js`
+- Exporter manuellement toute la base Firestore (test/diagnostic) : `npm run backup` — écrit un
+  `.json.gz` dans `backup-tmp/` par défaut (même authentification que `reset-demo`, voir plus bas).
 
 Il n'y a ni étape de build ni de lint — les modifications dans `public/` prennent effet directement
 au prochain chargement de page / déploiement.
@@ -145,6 +147,27 @@ localhost et pendant les tests e2e** (paramètre `?e2e=1`) pour ne pas polluer l
 bruit de développement/test — voir la condition `ACTIF` en tête du fichier. `auth.js` appelle
 `definirUtilisateurSentry(email)` à chaque changement de session pour associer les erreurs
 rapportées à la boutique concernée.
+
+### Sauvegardes automatiques
+
+`.github/workflows/backup.yml` exporte toute la base Firestore chaque jour (cron `17 3 * * *`
+UTC) via `scripts/backup-firestore.mjs` — même mécanisme d'authentification que `reset-demo.cjs`
+(jeton de rafraîchissement OAuth du client public `firebase-tools`), mais lu depuis le secret
+GitHub `FIREBASE_REFRESH_TOKEN` plutôt que le fichier local `~/.config/configstore/`. Ce jeton
+est le même que celui de la connexion interactive `firebase login` du compte propriétaire —
+**si ce compte fait `firebase logout` ou révoque l'accès, le secret doit être régénéré** (relire
+le refresh_token depuis `~/.config/configstore/firebase-tools.json` après une nouvelle connexion,
+et le repousser avec `gh secret set FIREBASE_REFRESH_TOKEN`).
+
+Le script parcourt les collections dynamiquement via `:listCollectionIds` (pas de liste codée en
+dur) pour rester complet même si une nouvelle sous-collection apparaît plus tard. Chaque
+sauvegarde est un unique `.json.gz` compressé, committé par le workflow sur une branche dédiée
+**`backups`** (jamais fusionnée dans `main`) plutôt qu'un dépôt séparé — choix délibéré pour
+éviter d'avoir à gérer un jeton d'accès cross-repo ; le `GITHUB_TOKEN` par défaut suffit à pousser
+sur une autre branche du même dépôt. Les 30 sauvegardes les plus récentes sont conservées, les
+plus anciennes purgées automatiquement à chaque exécution. Déclenchement manuel pour tester sans
+attendre le cron : onglet GitHub *Actions* → *Backup Firestore* → *Run workflow*, ou
+`gh workflow run backup.yml`.
 
 ### i18n
 

@@ -42,6 +42,11 @@ Déployée sur `esig-gn.com` / `gestion-commerciale-gn.web.app`.
 - Script Node (`reset-demo.cjs`) utilisant l'API REST Firestore directement
 - **Python + reportlab** — génération des flyers marketing PDF (dossier `marketing/`)
 
+### Supervision & sauvegardes
+- **Sentry** — suivi des erreurs en production (`public/js/monitoring.js`), SDK chargé depuis son CDN
+- **GitHub Actions** (`.github/workflows/backup.yml`) — export automatique quotidien de toute la
+  base Firestore, committé sur la branche `backups`
+
 ### API / intégrations externes
 - **WhatsApp** (lien `wa.me`) — bouton support pour le plan Entreprise
 - Aucune API de paiement intégrée (gestion des abonnements 100% manuelle par le super-admin)

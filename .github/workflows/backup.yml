@@ -1,0 +1,56 @@
+name: Backup Firestore
+
+on:
+  schedule:
+    - cron: '17 3 * * *' # 03:17 UTC chaque jour (~05:17/06:17 en Guinée selon l'heure d'été côté serveur, sans incidence ici)
+  workflow_dispatch: {} # déclenchement manuel depuis l'onglet Actions, pour tester sans attendre le cron
+
+permissions:
+  contents: write
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      # Aucune dépendance npm nécessaire : le script n'utilise que des modules Node natifs
+      # (fs/os/path/zlib/fetch), comme scripts/reset-demo.cjs.
+      - name: Générer la sauvegarde
+        env:
+          FIREBASE_REFRESH_TOKEN: ${{ secrets.FIREBASE_REFRESH_TOKEN }}
+        run: node scripts/backup-firestore.mjs backup-output
+
+      # Les sauvegardes vivent sur une branche dédiée (jamais fusionnée dans main) plutôt qu'un
+      # dépôt séparé, pour rester simple (pas de jeton d'accès cross-repo à gérer) — le
+      # GITHUB_TOKEN par défaut suffit à pousser sur une autre branche du même dépôt.
+      - name: Committer sur la branche backups
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          if git ls-remote --exit-code --heads origin backups > /dev/null 2>&1; then
+            git fetch origin backups
+            git checkout -b backups origin/backups
+          else
+            git checkout --orphan backups
+            git rm -rf . > /dev/null 2>&1 || true
+          fi
+
+          mkdir -p backups
+          cp backup-output/*.json.gz backups/
+
+          # Conserve les 30 dernières sauvegardes journalières, purge les plus anciennes.
+          cd backups && ls -1t *.json.gz | tail -n +31 | xargs -r rm -- && cd ..
+
+          git add backups
+          if git diff --cached --quiet; then
+            echo "Aucun changement (déjà sauvegardé aujourd'hui)."
+          else
+            git commit -m "Sauvegarde Firestore $(date -u +%Y-%m-%d)"
+            git push origin backups
+          fi

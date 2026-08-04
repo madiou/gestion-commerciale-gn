@@ -6,3 +6,5 @@ ui-debug.log
 *.local
 test-results/
 playwright-report/
+backup-tmp/
+backup-output/
