@@ -3,7 +3,7 @@
 Application web de gestion commerciale multi-boutiques en français (ventes, stock, achats,
 clients, fournisseurs, production, finance, rapports) pour les petits commerces en Guinée.
 
-Déployée sur `esig-gn.com` / `gestion-commerciale-gn.web.app`.
+Déployée sur `boutiquegestion.com` / `gestion-commerciale-gn.web.app`.
 
 ## Stack technique
 

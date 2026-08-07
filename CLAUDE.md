@@ -7,7 +7,7 @@ Ce fichier guide Claude Code (claude.ai/code) quand il travaille sur le code de 
 "Gestion Commerciale" — une application web de gestion commerciale multi-boutiques en français
 (ventes, stock, achats, clients, fournisseurs, production, finance, rapports) pour les petits
 commerces en Guinée. Basée sur Firebase (Auth + Firestore), déployée sur Firebase Hosting à
-`esig-gn.com` / `gestion-commerciale-gn.web.app`. Aucun outil de build : le navigateur charge des
+`boutiquegestion.com` / `gestion-commerciale-gn.web.app`. Aucun outil de build : le navigateur charge des
 modules ES natifs directement, et le SDK Firebase lui-même est importé directement depuis des URLs
 CDN `https://www.gstatic.com/firebasejs/12.15.0/...` dans les fichiers source — pas de bundler, pas
 d'étape d'installation npm pour l'appli elle-même. `npm`/`package.json` dans ce dépôt n'existe que
